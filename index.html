@@ -13,12 +13,16 @@
     .legend span { display: inline-flex; align-items: center; gap: 6px; }
     .legend i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
     .legend .c0 { background: #2e9a78; } .legend .c1 { background: #a88918; } .legend .c2 { background: #367ea9; }
-    .controls { display: grid; grid-template-columns: 86px 1fr 112px; gap: 16px; align-items: center; margin-bottom: 18px; }
+    .controls { display: grid; grid-template-columns: 74px auto auto auto auto minmax(0, 1fr) auto; gap: 8px; align-items: center; margin-bottom: 18px; }
     label { font-weight: 700; }
     input[type="range"] { width: 100%; accent-color: #397aa0; }
-    output { text-align: right; font-variant-numeric: tabular-nums; color: #397aa0; font-weight: 700; }
+    output { text-align: right; font-variant-numeric: tabular-nums; color: #397aa0; font-weight: 700; white-space: nowrap; font-size: 12px; }
+    .playback { width: 28px; height: 28px; padding: 0; border: 1px solid #cbdad3; border-radius: 6px; background: white; color: #397aa0; font-size: 13px; line-height: 1; cursor: pointer; transition: background .12s, color .12s, transform .12s; }
+    .playback:active, .playback.is-active { background: #276784; color: white; transform: translateY(1px); }
+    #speed { width: 36px; font-size: 11px; }
     .ticks { display: flex; justify-content: space-between; margin: -8px 111px 18px 101px; color: #66776f; font-size: 12px; }
     .viewer-panels { display: grid; grid-template-columns: minmax(230px, .9fr) minmax(0, 2.1fr); gap: 16px; align-items: stretch; }
+    .left-stack { display: grid; gap: 16px; align-content: start; }
     .panel { min-width: 0; background: white; border: 1px solid #d7e2dd; border-radius: 12px; overflow: hidden; }
     .operations-panel { align-self: stretch; }
     .canvas-toolbar { display: flex; justify-content: flex-end; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid #e1ebe6; background: #fbfdfc; }
@@ -28,12 +32,17 @@
     .canvas-stage { position: relative; margin: 0 auto; }
     img { display: block; max-width: none; height: auto; }
     .operation-toggle { margin-right: auto; min-width: auto !important; padding: 0 10px; font-size: 13px !important; }
+    #replay-move[hidden] { display: none; }
     .operation-table-wrap { padding: 12px 16px 14px; }
     .operation-table { width: 100%; border-collapse: collapse; color: #40554b; font-size: 14px; }
     .operation-table th, .operation-table td { padding: 9px 10px; text-align: left; border-bottom: 1px solid #edf2ef; }
     .operation-table th { width: 100px; color: #397aa0; font-size: 13px; }
     .operation-table tr:last-child th, .operation-table tr:last-child td { border-bottom: 0; }
     .panel-title { margin: 0; padding: 13px 16px 10px; color: #397aa0; font-size: 15px; border-bottom: 1px solid #e1ebe6; }
+    .ir-list, .metrics { margin: 0; padding: 10px 16px 14px; color: #40554b; font-size: 12px; line-height: 1.55; }
+    .ir-list { max-height: 335px; overflow: auto; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; }
+    .metrics { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; }
+    .metrics dt { color: #397aa0; font-weight: 700; } .metrics dd { margin: 0; }
     @media (max-width: 760px) {
       main { padding: 18px 12px; }
       .controls { grid-template-columns: 1fr; gap: 8px; }
@@ -54,23 +63,29 @@
     </div>
     <div class="controls">
       <label for="stage">执行进度</label>
-      <input id="stage" type="range" min="0" max="0" value="0" step="1">
+      <button id="play" class="playback" type="button" aria-label="播放">▶</button>
+      <button id="pause" class="playback" type="button" aria-label="暂停">❚❚</button>
+      <button id="reset" class="playback" type="button" aria-label="重置">↺</button>
+      <button id="speed" class="playback" type="button" aria-label="切换播放速度">1×</button>
+      <input id="stage" type="range" min="0" max="0" value="0" step="1" aria-keyshortcuts="ArrowLeft ArrowRight">
       <output id="stage-label" for="stage" aria-live="polite">Stage 0 · 0–2 s</output>
     </div>
     <div id="ticks" class="ticks" aria-hidden="true"></div>
     <div class="viewer-panels">
-      <section class="panel operations-panel" aria-label="各电路当前操作">
-        <h2 class="panel-title">当前操作</h2>
-        <div class="operation-table-wrap">
-        <table class="operation-table" aria-label="各电路当前操作">
-          <thead><tr><th scope="col">电路名</th><th scope="col">当前操作</th></tr></thead>
-          <tbody id="operation-rows"></tbody>
-        </table>
-        </div>
+      <div class="left-stack">
+      <section class="panel operations-panel" aria-label="当前 QASMmq 指令">
+        <h2 class="panel-title">当前 QASMmq / ZAIR 指令</h2>
+        <pre id="ir-list" class="ir-list"></pre>
       </section>
+      <section class="panel" aria-label="运行与性能模型">
+        <h2 class="panel-title">运行与性能模型</h2>
+        <dl id="metrics" class="metrics"></dl>
+      </section>
+      </div>
       <section class="panel canvas-panel" aria-label="原子阵列可视化">
         <div class="canvas-toolbar" aria-label="画布缩放">
-          <button id="operation-toggle" class="operation-toggle" type="button" aria-pressed="false">隐藏门操作</button>
+          <button id="operation-toggle" class="operation-toggle" type="button" aria-pressed="false">Initial mapping</button>
+          <button id="replay-move" class="operation-toggle" type="button" hidden>重放移动</button>
           <button id="zoom-out" type="button" aria-label="缩小画布">−</button>
           <output id="zoom-label">100%</output>
           <button id="zoom-reset" type="button" aria-label="适配完整画布">适配</button>
@@ -87,12 +102,16 @@
     const slider = document.getElementById('stage');
     const frame = document.getElementById('frame');
     const label = document.getElementById('stage-label');
-    const operationRows = document.getElementById('operation-rows');
+    const irList = document.getElementById('ir-list');
+    const metrics = document.getElementById('metrics');
     const ticks = document.getElementById('ticks');
     const canvasViewport = document.getElementById('canvas-viewport');
     const canvasStage = document.getElementById('canvas-stage');
     const zoomLabel = document.getElementById('zoom-label');
     const timing = window.STAGE_TIMING;
+    let playbackTimer = null;
+    const speedModes = [{ label: '.8×', factor: 1.18 }, { label: '1×', factor: 1 }, { label: '1.2×', factor: .84 }];
+    let speedIndex = 1;
     const gateStages = timing.gate_stage_count;
     const timeline = timing.viewer_timeline;
     const lastStage = timing.durations_ns.length - 1;
@@ -107,8 +126,9 @@
       return image;
     });
     const initialFrame = new Image();
-    initialFrame.src = '_readout_frames/initial_state.svg';
+    initialFrame.src = '_readout_frames/initial_mapping.svg';
     let requestedFrame = 0;
+    let activeStep = 0;
     let showOperations = true;
     // Do not blank the canvas while a requested SVG is still being fetched.
     // This matters especially on Pages, where the 34 frames arrive separately.
@@ -116,7 +136,11 @@
       const request = ++requestedFrame;
       const next = showOperations ? frames[step] : initialFrame;
       const swap = () => {
-        if (requestedFrame === request) frame.src = next.src;
+        if (requestedFrame !== request) return;
+        // A fresh URL fragment makes each entry into a move stage restart its
+        // one-shot SVG animation, even when its frame is already cached.
+        const isMove = timeline[step].kind === 'move_stage' && showOperations;
+        frame.src = isMove ? `${next.src}${next.src.includes('?') ? '&' : '?'}play=${Date.now()}` : next.src;
       };
       if (next.complete && next.naturalWidth) {
         swap();
@@ -162,7 +186,7 @@
     window.addEventListener('resize', () => { if (!userZoomed) fitCanvas(); });
     document.getElementById('operation-toggle').addEventListener('click', (event) => {
       showOperations = !showOperations;
-      event.currentTarget.textContent = showOperations ? '隐藏门操作' : '显示门操作';
+      event.currentTarget.textContent = showOperations ? 'Initial mapping' : '返回执行态';
       event.currentTarget.setAttribute('aria-pressed', String(!showOperations));
       update();
     });
@@ -184,26 +208,70 @@
     };
     const update = () => {
       const step = Number(slider.value);
+      activeStep = step;
       const timelineItem = timeline[step];
       const stage = timelineItem.stage;
       const info = descriptions(stage);
       showFrameWhenReady(step);
       frame.alt = `${timelineItem.kind === 'move_stage' ? `move_stage ${stage}` : info.phase}：${info.text}。`;
       label.textContent = timelineItem.kind === 'move_stage'
-        ? `move_stage ${stage} · 跟随 Stage ${stage}`
+        ? `move_stage ${stage}.${timelineItem.substage} · 跟随 Stage ${stage}（${timelineItem.moves} 个兼容移动）`
         : `${info.phase} · ${formatTime(info.startNs)}–${formatTime(info.endNs)}`;
-      operationRows.replaceChildren(...Object.entries(timing.stage_operations[stage]).sort(([left], [right]) => left.localeCompare(right)).map(([circuit, operation]) => {
-        const row = document.createElement('tr');
-        const name = document.createElement('th');
-        name.scope = 'row';
-        name.textContent = circuit;
-        const detail = document.createElement('td');
-        detail.textContent = operation;
-        row.append(name, detail);
-        return row;
-      }));
+      document.getElementById('replay-move').hidden = timelineItem.kind !== 'move_stage';
+      const qasm = timing.qasmmq_ir.filter((item) => item.stage === stage || (!('stage' in item) && stage === 0));
+      const zair = timing.zair_ir.filter((item) => item.stage === stage || (!('stage' in item) && stage === 0));
+      const qubits = (values) => values.map((value) => `q${value}`).join(', ');
+      const pairs = (values) => values.map(([left, right]) => `(q${left}, q${right})`).join('  ');
+      const conciseQasm = (item) => {
+        if (item.op === '@init') return '@init  初始化 C0 / C1 / C2 的 SZ tile';
+        if (item.op === '@u3') return `@u3  ${item.circuit}: ${qubits(item.qubits)}  · ${item.zone}`;
+        if (item.op === '@move') return `@move  ${item.circuit}: → ${item.to}  ${pairs(item.pairs)}`;
+        if (item.op === '@rydberg') return `@rydberg  ${item.circuit}: ${pairs(item.pairs)}  · ${item.zone_id}`;
+        return item.op;
+      };
+      const conciseZair = (item) => {
+        if (item.op === 'init') return '↳ ZAIR init';
+        if (item.op === '1qGate') return `↳ ZAIR 1qGate: ${qubits(item.locs)}`;
+        if (item.op === 'rearrangeJob') return '↳ ZAIR rearrangeJob';
+        if (item.op === 'rydberg') return `↳ ZAIR rydberg: ${item.zone_id}`;
+        return `↳ ZAIR ${item.op}`;
+      };
+      irList.textContent = [...qasm.map(conciseQasm), ...zair.map(conciseZair)].join('\n') || '该 stage 没有新的 IR 指令。';
+      const model = timing.performance_model;
+      const entries = [
+        ['模型', `${model.model}（非设备校准）`],
+        ['MultiQ AOD 移动层', String(timeline.filter((item) => item.kind === 'move_stage').length)],
+        ['事件数', `U3 ${model.event_counts.u3} · CZ ${model.event_counts.rydberg_cz} · move ${model.event_counts.move} · readout ${model.event_counts.readout}`],
+        ['累计成功率估计', `${(model.estimated_success_probability * 100).toFixed(3)}%`],
+        ['单事件保真度', `U3 ${(model.fidelity_per_event.u3 * 100).toFixed(2)}% · CZ ${(model.fidelity_per_event.rydberg_cz * 100).toFixed(2)}% · readout ${(model.fidelity_per_event.readout * 100).toFixed(2)}% · move ${(model.fidelity_per_event.move * 100).toFixed(2)}%`],
+      ];
+      metrics.replaceChildren(...entries.flatMap(([key, value]) => { const dt=document.createElement('dt'); dt.textContent=key; const dd=document.createElement('dd'); dd.textContent=value; return [dt, dd]; }));
     };
+    document.getElementById('replay-move').addEventListener('click', () => {
+      const source = frames[activeStep].src;
+      frame.src = '';
+      requestAnimationFrame(() => { frame.src = `${source}${source.includes('?') ? '&' : '?'}replay=${Date.now()}`; });
+    });
+    const flashButton = (button) => { button.classList.add('is-active'); setTimeout(() => button.classList.remove('is-active'), 140); };
+    const stopPlayback = () => { if (playbackTimer) clearTimeout(playbackTimer); playbackTimer = null; };
+    const playNext = () => {
+      if (Number(slider.value) >= lastStep) return stopPlayback();
+      slider.value = Number(slider.value) + 1;
+      update();
+      playbackTimer = setTimeout(playNext, (timeline[Number(slider.value)].kind === 'move_stage' ? 2100 : 1800) * speedModes[speedIndex].factor);
+    };
+    document.getElementById('play').addEventListener('click', (event) => { flashButton(event.currentTarget); if (!playbackTimer) playNext(); });
+    document.getElementById('pause').addEventListener('click', (event) => { flashButton(event.currentTarget); stopPlayback(); });
+    document.getElementById('reset').addEventListener('click', (event) => { flashButton(event.currentTarget); stopPlayback(); slider.value = 0; update(); });
+    document.getElementById('speed').addEventListener('click', (event) => { speedIndex = (speedIndex + 1) % speedModes.length; event.currentTarget.textContent = speedModes[speedIndex].label; flashButton(event.currentTarget); });
     slider.addEventListener('input', update);
+    slider.addEventListener('keydown', (event) => {
+      const delta = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
+      if (!delta) return;
+      event.preventDefault();
+      slider.value = Math.max(0, Math.min(lastStep, Number(slider.value) + delta));
+      update();
+    });
     update();
   </script>
 </body>
