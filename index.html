@@ -18,24 +18,29 @@
     input[type="range"] { width: 100%; accent-color: #397aa0; }
     output { text-align: right; font-variant-numeric: tabular-nums; color: #397aa0; font-weight: 700; }
     .ticks { display: flex; justify-content: space-between; margin: -8px 111px 18px 101px; color: #66776f; font-size: 12px; }
-    figure { margin: 0; background: white; border: 1px solid #d7e2dd; border-radius: 12px; overflow: hidden; }
+    .viewer-panels { display: grid; grid-template-columns: minmax(230px, .9fr) minmax(0, 2.1fr); gap: 16px; align-items: stretch; }
+    .panel { min-width: 0; background: white; border: 1px solid #d7e2dd; border-radius: 12px; overflow: hidden; }
+    .operations-panel { align-self: stretch; }
     .canvas-toolbar { display: flex; justify-content: flex-end; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid #e1ebe6; background: #fbfdfc; }
     .canvas-toolbar button { min-width: 30px; border: 1px solid #cbdad3; border-radius: 6px; background: white; color: #397aa0; font-size: 18px; line-height: 28px; cursor: pointer; }
     .canvas-toolbar output { width: 48px; text-align: center; font-size: 13px; }
-    .canvas-viewport { height: 72vh; max-height: 72vh; overflow: auto; background: white; }
+    .canvas-viewport { height: min(64vh, 680px); min-height: 360px; overflow: auto; background: white; }
     .canvas-stage { position: relative; margin: 0 auto; }
     img { display: block; max-width: none; height: auto; }
     .operation-toggle { margin-right: auto; min-width: auto !important; padding: 0 10px; font-size: 13px !important; }
-    .operation-table-wrap { padding: 0 16px 14px; border-top: 1px solid #e1ebe6; }
+    .operation-table-wrap { padding: 12px 16px 14px; }
     .operation-table { width: 100%; border-collapse: collapse; color: #40554b; font-size: 14px; }
     .operation-table th, .operation-table td { padding: 9px 10px; text-align: left; border-bottom: 1px solid #edf2ef; }
     .operation-table th { width: 100px; color: #397aa0; font-size: 13px; }
     .operation-table tr:last-child th, .operation-table tr:last-child td { border-bottom: 0; }
-    @media (max-width: 620px) {
+    .panel-title { margin: 0; padding: 13px 16px 10px; color: #397aa0; font-size: 15px; border-bottom: 1px solid #e1ebe6; }
+    @media (max-width: 760px) {
       main { padding: 18px 12px; }
       .controls { grid-template-columns: 1fr; gap: 8px; }
       output { text-align: left; }
       .ticks { margin: 0 0 14px; }
+      .viewer-panels { grid-template-columns: 1fr; }
+      .canvas-viewport { height: min(62vh, 580px); }
     }
   </style>
 </head>
@@ -49,28 +54,33 @@
     </div>
     <div class="controls">
       <label for="stage">执行进度</label>
-      <input id="stage" type="range" min="0" max="0" value="0" step="1" aria-describedby="stage-description">
+      <input id="stage" type="range" min="0" max="0" value="0" step="1">
       <output id="stage-label" for="stage" aria-live="polite">Stage 0 · 0–2 s</output>
     </div>
     <div id="ticks" class="ticks" aria-hidden="true"></div>
-    <figure>
-      <div class="canvas-toolbar" aria-label="画布缩放">
-        <button id="operation-toggle" class="operation-toggle" type="button" aria-pressed="false">隐藏门操作</button>
-        <button id="zoom-out" type="button" aria-label="缩小画布">−</button>
-        <output id="zoom-label">100%</output>
-        <button id="zoom-reset" type="button" aria-label="适配完整画布">适配</button>
-        <button id="zoom-in" type="button" aria-label="放大画布">+</button>
-      </div>
-      <div id="canvas-viewport" class="canvas-viewport">
-        <div id="canvas-stage" class="canvas-stage"><img id="frame" src="_readout_frames/stage_00.svg" decoding="async" alt="Stage 0：三个电路在存储区执行单比特门。"></div>
-      </div>
-      <div class="operation-table-wrap">
+    <div class="viewer-panels">
+      <section class="panel operations-panel" aria-label="各电路当前操作">
+        <h2 class="panel-title">当前操作</h2>
+        <div class="operation-table-wrap">
         <table class="operation-table" aria-label="各电路当前操作">
           <thead><tr><th scope="col">电路名</th><th scope="col">当前操作</th></tr></thead>
           <tbody id="operation-rows"></tbody>
         </table>
+        </div>
+      </section>
+      <section class="panel canvas-panel" aria-label="原子阵列可视化">
+        <div class="canvas-toolbar" aria-label="画布缩放">
+          <button id="operation-toggle" class="operation-toggle" type="button" aria-pressed="false">隐藏门操作</button>
+          <button id="zoom-out" type="button" aria-label="缩小画布">−</button>
+          <output id="zoom-label">100%</output>
+          <button id="zoom-reset" type="button" aria-label="适配完整画布">适配</button>
+          <button id="zoom-in" type="button" aria-label="放大画布">+</button>
+        </div>
+        <div id="canvas-viewport" class="canvas-viewport">
+          <div id="canvas-stage" class="canvas-stage"><img id="frame" src="_readout_frames/stage_00.svg" decoding="async" alt="Stage 0：三个电路在存储区执行单比特门。"></div>
+        </div>
+      </section>
       </div>
-    </figure>
   </main>
   <script src="stage_timing.js"></script>
   <script>
