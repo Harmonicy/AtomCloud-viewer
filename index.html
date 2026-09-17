@@ -13,14 +13,16 @@
     .legend span { display: inline-flex; align-items: center; gap: 6px; }
     .legend i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
     .legend .c0 { background: #2e9a78; } .legend .c1 { background: #a88918; } .legend .c2 { background: #367ea9; }
-    .controls { display: grid; grid-template-columns: 74px auto auto auto auto auto auto minmax(0, 1fr) auto; gap: 8px; align-items: center; margin-bottom: 18px; }
+    .controls { display: grid; grid-template-columns: 74px auto auto auto auto auto auto minmax(220px, 1fr); gap: 8px; align-items: start; margin-bottom: 18px; }
     label { font-weight: 700; }
     input[type="range"] { width: 100%; accent-color: #397aa0; }
-    output { text-align: right; font-variant-numeric: tabular-nums; color: #397aa0; font-weight: 700; white-space: nowrap; font-size: 12px; }
+    output { font-variant-numeric: tabular-nums; color: #397aa0; font-weight: 700; white-space: nowrap; font-size: 12px; }
     .playback { width: 28px; height: 28px; padding: 0; border: 1px solid #cbdad3; border-radius: 6px; background: white; color: #397aa0; font-size: 13px; line-height: 1; cursor: pointer; transition: background .12s, color .12s, transform .12s; }
     .playback:active, .playback.is-active { background: #276784; color: white; transform: translateY(1px); }
     #speed { width: 36px; font-size: 11px; }
-    .ticks { display: flex; justify-content: space-between; margin: -8px 111px 18px 101px; color: #66776f; font-size: 12px; }
+    .progress-stack { display: grid; min-width: 0; gap: 8px; }
+    #stage-label { justify-self: center; text-align: center; }
+    .ticks { display: flex; width: 100%; justify-content: space-between; color: #66776f; font-size: 12px; }
     .viewer-panels { display: grid; grid-template-columns: minmax(230px, .9fr) minmax(0, 2.1fr); gap: 16px; align-items: stretch; }
     .left-stack { display: grid; gap: 16px; align-content: start; }
     .panel { min-width: 0; background: white; border: 1px solid #d7e2dd; border-radius: 12px; overflow: hidden; }
@@ -41,13 +43,19 @@
     .operation-table tbody td { border-radius: 0 7px 7px 0; line-height: 1.4; }
     .panel-title { margin: 0; padding: 13px 16px 10px; color: #397aa0; font-size: 15px; border-bottom: 1px solid #e1ebe6; }
     .metrics { margin: 0; padding: 10px 16px 14px; color: #40554b; font-size: 12px; line-height: 1.55; }
-    .metrics { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; }
-    .metrics dt { color: #397aa0; font-weight: 700; } .metrics dd { margin: 0; }
+    .metrics { display: block; }
+    .metrics dt { display: inline; color: #397aa0; font-weight: 700; }
+    .metrics dt::after { content: '：'; }
+    .metrics dd { display: inline; margin: 0; }
+    .metrics dd::after { content: ''; display: block; height: 8px; }
+    .fidelity-formula { display: inline; color: #2b5d7f; font-family: Georgia, "Times New Roman", serif; font-size: 15px; white-space: nowrap; }
+    .fidelity-formula i { font-weight: 700; } .fidelity-formula sup, .fidelity-formula sub { font-size: .7em; line-height: 0; }
+    .fidelity-parameters { color: #40554b; font-family: Georgia, "Times New Roman", serif; line-height: 1.75; }
+    .fidelity-parameters i { font-weight: 700; } .fidelity-parameters sup, .fidelity-parameters sub { font-size: .72em; line-height: 0; }
     @media (max-width: 760px) {
       main { padding: 18px 12px; }
       .controls { grid-template-columns: 1fr; gap: 8px; }
-      output { text-align: left; }
-      .ticks { margin: 0 0 14px; }
+      .progress-stack { width: 100%; }
       .viewer-panels { grid-template-columns: 1fr; }
       .canvas-viewport { height: min(62vh, 580px); }
     }
@@ -69,18 +77,20 @@
       <button id="previous" class="playback" type="button" aria-label="前一帧">⏪</button>
       <button id="next" class="playback" type="button" aria-label="后一帧">⏩</button>
       <button id="speed" class="playback" type="button" aria-label="切换播放速度">1×</button>
-      <input id="stage" type="range" min="0" max="0" value="0" step="1" aria-keyshortcuts="ArrowLeft ArrowRight">
-      <output id="stage-label" for="stage" aria-live="polite">Stage 0 · 0–2 s</output>
+      <div class="progress-stack">
+        <input id="stage" type="range" min="0" max="0" value="0" step="1" aria-keyshortcuts="ArrowLeft ArrowRight">
+        <output id="stage-label" for="stage" aria-live="polite">Stage 0 · 0–2 s</output>
+        <div id="ticks" class="ticks" aria-hidden="true"></div>
+      </div>
     </div>
-    <div id="ticks" class="ticks" aria-hidden="true"></div>
     <div class="viewer-panels">
       <div class="left-stack">
       <section class="panel operations-panel" aria-label="当前电路操作">
-        <h2 class="panel-title">当前操作</h2>
+        <h2 class="panel-title">Detail</h2>
         <div class="operation-table-wrap"><table class="operation-table"><thead><tr><th>电路</th><th>当前操作</th></tr></thead><tbody id="operation-rows"></tbody></table></div>
       </section>
-      <section class="panel" aria-label="运行与性能模型">
-        <h2 class="panel-title">运行与性能模型</h2>
+      <section class="panel" aria-label="Fidelity">
+        <h2 class="panel-title">Fidelity</h2>
         <dl id="metrics" class="metrics"></dl>
       </section>
       </div>
@@ -246,14 +256,19 @@
         return row;
       }));
       const model = timing.performance_model;
+      const formula = document.createElement('span');
+      formula.className = 'fidelity-formula';
+      formula.innerHTML = '<i>F</i><sub>batch</sub> = (<i>F</i><sub>1Q</sub>)<sup>N<sub>1Q</sub></sup> × (<i>F</i><sub>CZ</sub>)<sup>N<sub>CZ</sub></sup> × (<i>F</i><sub>transfer</sub>)<sup>N<sub>transfer</sub></sup>';
+      const parameters = document.createElement('span');
+      parameters.className = 'fidelity-parameters';
+      parameters.innerHTML = `<i>F</i><sub>1Q</sub> = 0.9991, <i>N</i><sub>1Q</sub> = ${model.event_counts.u3}<br><i>F</i><sub>CZ</sub> = 0.995, <i>N</i><sub>CZ</sub> = ${model.event_counts.rydberg_cz}<br><i>F</i><sub>transfer</sub> = 0.999, <i>N</i><sub>transfer</sub> = ${model.event_counts.move}`;
       const entries = [
-        ['模型', `${model.model}（非设备校准）`],
-        ['MultiQ AOD 移动层', String(timeline.filter((item) => item.kind === 'move_stage').length)],
-        ['事件数', `U3 ${model.event_counts.u3} · CZ ${model.event_counts.rydberg_cz} · move ${model.event_counts.move} · readout ${model.event_counts.readout}`],
-        ['累计成功率估计', `${(model.estimated_success_probability * 100).toFixed(3)}%`],
-        ['单事件保真度', `U3 ${(model.fidelity_per_event.u3 * 100).toFixed(2)}% · CZ ${(model.fidelity_per_event.rydberg_cz * 100).toFixed(2)}% · readout ${(model.fidelity_per_event.readout * 100).toFixed(2)}% · move ${(model.fidelity_per_event.move * 100).toFixed(2)}%`],
+        ['公式', formula],
+        ['参数', parameters],
+        ['批次联合保真度', `${(model.estimated_success_probability * 100).toFixed(3)}%`],
+        ['单电路保真度', `C0 ${(model.per_circuit_success_probability.C0 * 100).toFixed(2)}% · C1 ${(model.per_circuit_success_probability.C1 * 100).toFixed(2)}% · C2 ${(model.per_circuit_success_probability.C2 * 100).toFixed(2)}%`],
       ];
-      metrics.replaceChildren(...entries.flatMap(([key, value]) => { const dt=document.createElement('dt'); dt.textContent=key; const dd=document.createElement('dd'); dd.textContent=value; return [dt, dd]; }));
+      metrics.replaceChildren(...entries.flatMap(([key, value]) => { const dt=document.createElement('dt'); dt.textContent=key; const dd=document.createElement('dd'); typeof value === 'string' ? dd.textContent=value : dd.append(value); return [dt, dd]; }));
     };
     document.getElementById('replay-move').addEventListener('click', () => {
       const source = frames[activeStep].src;
