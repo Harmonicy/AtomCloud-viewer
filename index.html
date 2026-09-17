@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>中性原子多程序 Stage 查看器</title>
+  <style>
+    :root { color-scheme: light; font-family: Arial, "PingFang SC", sans-serif; }
+    body { margin: 0; background: #f7faf9; color: #21332c; }
+    main { max-width: 1280px; margin: 0 auto; padding: 28px 24px 36px; }
+    h1 { margin: 0 0 20px; font-size: 24px; }
+    .controls { display: grid; grid-template-columns: 86px 1fr 112px; gap: 16px; align-items: center; margin-bottom: 18px; }
+    label { font-weight: 700; }
+    input[type="range"] { width: 100%; accent-color: #397aa0; }
+    output { text-align: right; font-variant-numeric: tabular-nums; color: #397aa0; font-weight: 700; }
+    .ticks { display: flex; justify-content: space-between; margin: -8px 111px 18px 101px; color: #66776f; font-size: 12px; }
+    figure { margin: 0; background: white; border: 1px solid #d7e2dd; border-radius: 12px; overflow: hidden; }
+    img { display: block; width: 100%; height: auto; }
+    figcaption { padding: 10px 16px; color: #52645b; font-size: 14px; }
+    @media (max-width: 620px) {
+      main { padding: 18px 12px; }
+      .controls { grid-template-columns: 1fr; gap: 8px; }
+      output { text-align: left; }
+      .ticks { margin: 0 0 14px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>中性原子多程序并行执行</h1>
+    <div class="controls">
+      <label for="stage">执行进度</label>
+      <input id="stage" type="range" min="0" max="33" value="0" step="1" aria-describedby="stage-description">
+      <output id="stage-label" for="stage" aria-live="polite">Stage 0 · 0–2 s</output>
+    </div>
+    <div class="ticks" aria-hidden="true"><span>Stage 0</span><span>Stage 7</span><span>Stage 15</span><span>Stage 28</span><span>Readout end</span></div>
+    <figure>
+      <img id="frame" src="_readout_frames/stage_00.png" alt="Stage 0：三个电路在存储区执行单比特门。">
+      <figcaption id="stage-description">拖动滑条查看任一同步 stage；每个 stage 为 2 秒。</figcaption>
+    </figure>
+  </main>
+  <script src="stage_timing.js"></script>
+  <script>
+    const slider = document.getElementById('stage');
+    const frame = document.getElementById('frame');
+    const label = document.getElementById('stage-label');
+    const caption = document.getElementById('stage-description');
+    const timing = window.STAGE_TIMING;
+    const gateStages = 29;
+    const formatTime = (ns) => ns >= 1e6 ? `${(ns / 1e6).toFixed(3)} ms` : ns >= 1e3 ? `${(ns / 1e3).toFixed(3)} μs` : `${ns.toFixed(1)} ns`;
+    const descriptions = (stage) => {
+      const start = stage * 2;
+      const end = start + 2;
+      const activeReadout = [];
+      if (stage >= 7 && stage < 12) activeReadout.push('C0 正在 RZ0 测量');
+      if (stage >= 15 && stage < 20) activeReadout.push('C1 正在 RZ0 测量');
+      if (stage >= 29 && stage < 34) activeReadout.push('C2 正在 RZ1 测量');
+      const phase = stage < gateStages ? `Stage ${stage}` : '完成后读出';
+      const startNs = timing.durations_ns.slice(0, stage).reduce((sum, value) => sum + value, 0);
+      const endNs = startNs + timing.durations_ns[stage];
+      return { start, end, startNs, endNs, phase, text: activeReadout.length ? activeReadout.join('；') : '执行门操作' };
+    };
+    const update = () => {
+      const stage = Number(slider.value);
+      const info = descriptions(stage);
+      const fileStage = String(stage).padStart(2, '0');
+      frame.src = `_readout_frames/stage_${fileStage}.png`;
+      frame.alt = `${info.phase}：${info.text}。`;
+      label.textContent = `${info.phase} · ${formatTime(info.startNs)}–${formatTime(info.endNs)}`;
+      caption.textContent = `${info.text}。时长按 Lukin 参数累计：1Q 500 ns，CZ 262.4 ns，读出成像 500 μs。`;
+    };
+    slider.addEventListener('input', update);
+    update();
+  </script>
+</body>
+</html>
