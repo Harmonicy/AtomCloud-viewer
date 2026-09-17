@@ -9,13 +9,22 @@
     body { margin: 0; background: #f7faf9; color: #21332c; }
     main { max-width: 1280px; margin: 0 auto; padding: 28px 24px 36px; }
     h1 { margin: 0 0 20px; font-size: 24px; }
+    .legend { display: flex; flex-wrap: wrap; gap: 10px 18px; margin: -8px 0 18px; color: #52645b; font-size: 13px; }
+    .legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .legend i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    .legend .c0 { background: #2e9a78; } .legend .c1 { background: #a88918; } .legend .c2 { background: #367ea9; }
     .controls { display: grid; grid-template-columns: 86px 1fr 112px; gap: 16px; align-items: center; margin-bottom: 18px; }
     label { font-weight: 700; }
     input[type="range"] { width: 100%; accent-color: #397aa0; }
     output { text-align: right; font-variant-numeric: tabular-nums; color: #397aa0; font-weight: 700; }
     .ticks { display: flex; justify-content: space-between; margin: -8px 111px 18px 101px; color: #66776f; font-size: 12px; }
     figure { margin: 0; background: white; border: 1px solid #d7e2dd; border-radius: 12px; overflow: hidden; }
-    img { display: block; width: 100%; height: auto; }
+    .canvas-toolbar { display: flex; justify-content: flex-end; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid #e1ebe6; background: #fbfdfc; }
+    .canvas-toolbar button { min-width: 30px; border: 1px solid #cbdad3; border-radius: 6px; background: white; color: #397aa0; font-size: 18px; line-height: 28px; cursor: pointer; }
+    .canvas-toolbar output { width: 48px; text-align: center; font-size: 13px; }
+    .canvas-viewport { max-height: 72vh; overflow: auto; background: #f2f6f4; }
+    .canvas-stage { position: relative; transform-origin: top left; }
+    img { display: block; max-width: none; height: auto; }
     figcaption { padding: 10px 16px; color: #52645b; font-size: 14px; }
     @media (max-width: 620px) {
       main { padding: 18px 12px; }
@@ -28,15 +37,28 @@
 <body>
   <main>
     <h1>中性原子多程序并行执行</h1>
+    <div class="legend" aria-label="MultiQ 电路 tile 图例">
+      <span><i class="c0"></i>C0 · 4 qubits · 2 EZ pairs</span>
+      <span><i class="c1"></i>C1 · 8 qubits · 4 EZ pairs</span>
+      <span><i class="c2"></i>C2 · 16 qubits · 8 EZ pairs</span>
+    </div>
     <div class="controls">
       <label for="stage">执行进度</label>
-      <input id="stage" type="range" min="0" max="33" value="0" step="1" aria-describedby="stage-description">
+      <input id="stage" type="range" min="0" max="0" value="0" step="1" aria-describedby="stage-description">
       <output id="stage-label" for="stage" aria-live="polite">Stage 0 · 0–2 s</output>
     </div>
-    <div class="ticks" aria-hidden="true"><span>Stage 0</span><span>Stage 7</span><span>Stage 15</span><span>Stage 28</span><span>Readout end</span></div>
+    <div id="ticks" class="ticks" aria-hidden="true"></div>
     <figure>
-      <img id="frame" src="_readout_frames/stage_00.png" alt="Stage 0：三个电路在存储区执行单比特门。">
-      <figcaption id="stage-description">拖动滑条查看任一同步 stage；每个 stage 为 2 秒。</figcaption>
+      <div class="canvas-toolbar" aria-label="画布缩放">
+        <button id="zoom-out" type="button" aria-label="缩小画布">−</button>
+        <output id="zoom-label">100%</output>
+        <button id="zoom-reset" type="button" aria-label="重置画布缩放">100%</button>
+        <button id="zoom-in" type="button" aria-label="放大画布">+</button>
+      </div>
+      <div id="canvas-viewport" class="canvas-viewport">
+        <div id="canvas-stage" class="canvas-stage"><img id="frame" src="_readout_frames/stage_00.svg" decoding="async" alt="Stage 0：三个电路在存储区执行单比特门。"></div>
+      </div>
+      <figcaption id="stage-description">拖动滑条查看由 MultiQ 调度器生成的同步 stage。</figcaption>
     </figure>
   </main>
   <script src="stage_timing.js"></script>
@@ -45,26 +67,61 @@
     const frame = document.getElementById('frame');
     const label = document.getElementById('stage-label');
     const caption = document.getElementById('stage-description');
+    const ticks = document.getElementById('ticks');
+    const canvasStage = document.getElementById('canvas-stage');
+    const zoomLabel = document.getElementById('zoom-label');
     const timing = window.STAGE_TIMING;
-    const gateStages = 29;
+    const gateStages = timing.gate_stage_count;
+    const lastStage = timing.durations_ns.length - 1;
+    slider.max = lastStage;
+    // Decode every small static frame once at startup.  Slider input then only
+    // swaps an already-cached bitmap instead of triggering network/disk work.
+    const frames = Array.from({ length: lastStage + 1 }, (_, stage) => {
+      const image = new Image();
+      image.src = `_readout_frames/stage_${String(stage).padStart(2, '0')}.svg`;
+      image.decode?.().catch(() => {});
+      return image;
+    });
+    let zoom = 1;
+    let baseWidth = 0;
+    let baseHeight = 0;
+    const applyZoom = () => {
+      canvasStage.style.width = `${baseWidth * zoom}px`;
+      canvasStage.style.height = `${baseHeight * zoom}px`;
+      frame.style.transform = `scale(${zoom})`;
+      zoomLabel.textContent = `${Math.round(zoom * 100)}%`;
+    };
+    const initializeCanvas = () => {
+      if (!baseWidth) {
+        baseWidth = frame.naturalWidth;
+        baseHeight = frame.naturalHeight;
+        applyZoom();
+      }
+    };
+    frame.addEventListener('load', initializeCanvas);
+    if (frame.complete && frame.naturalWidth) initializeCanvas();
+    document.getElementById('zoom-in').addEventListener('click', () => { zoom = Math.min(2.5, zoom + 0.2); applyZoom(); });
+    document.getElementById('zoom-out').addEventListener('click', () => { zoom = Math.max(0.5, zoom - 0.2); applyZoom(); });
+    document.getElementById('zoom-reset').addEventListener('click', () => { zoom = 1; applyZoom(); });
+    ticks.replaceChildren(...[0, ...Object.values(timing.circuit_end_stage), gateStages - 1, lastStage]
+      .filter((value, index, values) => values.indexOf(value) === index)
+      .sort((a, b) => a - b)
+      .map((value) => { const node = document.createElement('span'); node.textContent = value === lastStage ? 'Readout end' : `Stage ${value}`; return node; }));
     const formatTime = (ns) => ns >= 1e6 ? `${(ns / 1e6).toFixed(3)} ms` : ns >= 1e3 ? `${(ns / 1e3).toFixed(3)} μs` : `${ns.toFixed(1)} ns`;
     const descriptions = (stage) => {
-      const start = stage * 2;
-      const end = start + 2;
       const activeReadout = [];
-      if (stage >= 7 && stage < 12) activeReadout.push('C0 正在 RZ0 测量');
-      if (stage >= 15 && stage < 20) activeReadout.push('C1 正在 RZ0 测量');
-      if (stage >= 29 && stage < 34) activeReadout.push('C2 正在 RZ1 测量');
+      for (const [circuit, endStage] of Object.entries(timing.circuit_end_stage)) {
+        if (stage >= endStage && stage < endStage + 5) activeReadout.push(`${circuit} 正在 ${timing.circuit_readout_zone[circuit]} 测量`);
+      }
       const phase = stage < gateStages ? `Stage ${stage}` : '完成后读出';
       const startNs = timing.durations_ns.slice(0, stage).reduce((sum, value) => sum + value, 0);
       const endNs = startNs + timing.durations_ns[stage];
-      return { start, end, startNs, endNs, phase, text: activeReadout.length ? activeReadout.join('；') : '执行门操作' };
+      return { startNs, endNs, phase, text: activeReadout.length ? activeReadout.join('；') : '执行 MultiQ 调度的门操作' };
     };
     const update = () => {
       const stage = Number(slider.value);
       const info = descriptions(stage);
-      const fileStage = String(stage).padStart(2, '0');
-      frame.src = `_readout_frames/stage_${fileStage}.png`;
+      frame.src = frames[stage].src;
       frame.alt = `${info.phase}：${info.text}。`;
       label.textContent = `${info.phase} · ${formatTime(info.startNs)}–${formatTime(info.endNs)}`;
       caption.textContent = `${info.text}。时长按 Lukin 参数累计：1Q 500 ns，CZ 262.4 ns，读出成像 500 μs。`;
