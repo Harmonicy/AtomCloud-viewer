@@ -13,7 +13,7 @@
     .legend span { display: inline-flex; align-items: center; gap: 6px; }
     .legend i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
     .legend .c0 { background: #2e9a78; } .legend .c1 { background: #a88918; } .legend .c2 { background: #367ea9; }
-    .controls { display: grid; grid-template-columns: 74px auto auto auto auto minmax(0, 1fr) auto; gap: 8px; align-items: center; margin-bottom: 18px; }
+    .controls { display: grid; grid-template-columns: 74px auto auto auto auto auto auto minmax(0, 1fr) auto; gap: 8px; align-items: center; margin-bottom: 18px; }
     label { font-weight: 700; }
     input[type="range"] { width: 100%; accent-color: #397aa0; }
     output { text-align: right; font-variant-numeric: tabular-nums; color: #397aa0; font-weight: 700; white-space: nowrap; font-size: 12px; }
@@ -34,13 +34,13 @@
     .operation-toggle { margin-right: auto; min-width: auto !important; padding: 0 10px; font-size: 13px !important; }
     #replay-move[hidden] { display: none; }
     .operation-table-wrap { padding: 12px 16px 14px; }
-    .operation-table { width: 100%; border-collapse: collapse; color: #40554b; font-size: 14px; }
-    .operation-table th, .operation-table td { padding: 9px 10px; text-align: left; border-bottom: 1px solid #edf2ef; }
-    .operation-table th { width: 100px; color: #397aa0; font-size: 13px; }
-    .operation-table tr:last-child th, .operation-table tr:last-child td { border-bottom: 0; }
+    .operation-table { width: 100%; border-collapse: separate; border-spacing: 0 6px; color: #40554b; font-size: 13px; }
+    .operation-table th, .operation-table td { padding: 9px 10px; text-align: left; }
+    .operation-table thead th { padding: 0 10px 5px; color: #397aa0; font-size: 12px; }
+    .operation-table tbody th { width: 52px; font-weight: 700; border-radius: 7px 0 0 7px; }
+    .operation-table tbody td { border-radius: 0 7px 7px 0; line-height: 1.4; }
     .panel-title { margin: 0; padding: 13px 16px 10px; color: #397aa0; font-size: 15px; border-bottom: 1px solid #e1ebe6; }
-    .ir-list, .metrics { margin: 0; padding: 10px 16px 14px; color: #40554b; font-size: 12px; line-height: 1.55; }
-    .ir-list { max-height: 335px; overflow: auto; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; }
+    .metrics { margin: 0; padding: 10px 16px 14px; color: #40554b; font-size: 12px; line-height: 1.55; }
     .metrics { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; }
     .metrics dt { color: #397aa0; font-weight: 700; } .metrics dd { margin: 0; }
     @media (max-width: 760px) {
@@ -66,6 +66,8 @@
       <button id="play" class="playback" type="button" aria-label="播放">▶</button>
       <button id="pause" class="playback" type="button" aria-label="暂停">❚❚</button>
       <button id="reset" class="playback" type="button" aria-label="重置">↺</button>
+      <button id="previous" class="playback" type="button" aria-label="前一帧">⏪</button>
+      <button id="next" class="playback" type="button" aria-label="后一帧">⏩</button>
       <button id="speed" class="playback" type="button" aria-label="切换播放速度">1×</button>
       <input id="stage" type="range" min="0" max="0" value="0" step="1" aria-keyshortcuts="ArrowLeft ArrowRight">
       <output id="stage-label" for="stage" aria-live="polite">Stage 0 · 0–2 s</output>
@@ -73,9 +75,9 @@
     <div id="ticks" class="ticks" aria-hidden="true"></div>
     <div class="viewer-panels">
       <div class="left-stack">
-      <section class="panel operations-panel" aria-label="当前 QASMmq 指令">
-        <h2 class="panel-title">当前 QASMmq / ZAIR 指令</h2>
-        <pre id="ir-list" class="ir-list"></pre>
+      <section class="panel operations-panel" aria-label="当前电路操作">
+        <h2 class="panel-title">当前操作</h2>
+        <div class="operation-table-wrap"><table class="operation-table"><thead><tr><th>电路</th><th>当前操作</th></tr></thead><tbody id="operation-rows"></tbody></table></div>
       </section>
       <section class="panel" aria-label="运行与性能模型">
         <h2 class="panel-title">运行与性能模型</h2>
@@ -84,7 +86,7 @@
       </div>
       <section class="panel canvas-panel" aria-label="原子阵列可视化">
         <div class="canvas-toolbar" aria-label="画布缩放">
-          <button id="operation-toggle" class="operation-toggle" type="button" aria-pressed="false">Initial mapping</button>
+          <button id="operation-toggle" class="operation-toggle" type="button" aria-pressed="true">返回执行态</button>
           <button id="replay-move" class="operation-toggle" type="button" hidden>重放移动</button>
           <button id="zoom-out" type="button" aria-label="缩小画布">−</button>
           <output id="zoom-label">100%</output>
@@ -92,7 +94,7 @@
           <button id="zoom-in" type="button" aria-label="放大画布">+</button>
         </div>
         <div id="canvas-viewport" class="canvas-viewport">
-          <div id="canvas-stage" class="canvas-stage"><img id="frame" src="_readout_frames/stage_00.svg" decoding="async" alt="Stage 0：三个电路在存储区执行单比特门。"></div>
+          <div id="canvas-stage" class="canvas-stage"><img id="frame" src="_readout_frames/initial_mapping.svg" decoding="async" alt="Initial mapping：三个电路的初始 tile 映射。"></div>
         </div>
       </section>
       </div>
@@ -102,7 +104,7 @@
     const slider = document.getElementById('stage');
     const frame = document.getElementById('frame');
     const label = document.getElementById('stage-label');
-    const irList = document.getElementById('ir-list');
+    const operationRows = document.getElementById('operation-rows');
     const metrics = document.getElementById('metrics');
     const ticks = document.getElementById('ticks');
     const canvasViewport = document.getElementById('canvas-viewport');
@@ -110,7 +112,10 @@
     const zoomLabel = document.getElementById('zoom-label');
     const timing = window.STAGE_TIMING;
     let playbackTimer = null;
-    const speedModes = [{ label: '.8×', factor: 1.18 }, { label: '1×', factor: 1 }, { label: '1.2×', factor: .84 }];
+    const speedModes = [
+      { label: '.8×', factor: 1.18 }, { label: '1×', factor: 1 }, { label: '1.2×', factor: .84 },
+      { label: '1.4×', factor: .72 }, { label: '1.6×', factor: .63 },
+    ];
     let speedIndex = 1;
     const gateStages = timing.gate_stage_count;
     const timeline = timing.viewer_timeline;
@@ -129,7 +134,9 @@
     initialFrame.src = '_readout_frames/initial_mapping.svg';
     let requestedFrame = 0;
     let activeStep = 0;
-    let showOperations = true;
+    // The static placement is the entry view; progress interaction switches
+    // naturally to the execution timeline.
+    let showOperations = false;
     // Do not blank the canvas while a requested SVG is still being fetched.
     // This matters especially on Pages, where the 34 frames arrive separately.
     const showFrameWhenReady = (step) => {
@@ -214,29 +221,30 @@
       const info = descriptions(stage);
       showFrameWhenReady(step);
       frame.alt = `${timelineItem.kind === 'move_stage' ? `move_stage ${stage}` : info.phase}：${info.text}。`;
-      label.textContent = timelineItem.kind === 'move_stage'
+      label.textContent = !showOperations ? 'Initial mapping · 初始 tile 分配'
+        : timelineItem.kind === 'move_stage'
         ? `move_stage ${stage}.${timelineItem.substage} · 跟随 Stage ${stage}（${timelineItem.moves} 个兼容移动）`
         : `${info.phase} · ${formatTime(info.startNs)}–${formatTime(info.endNs)}`;
-      document.getElementById('replay-move').hidden = timelineItem.kind !== 'move_stage';
-      const qasm = timing.qasmmq_ir.filter((item) => item.stage === stage || (!('stage' in item) && stage === 0));
-      const zair = timing.zair_ir.filter((item) => item.stage === stage || (!('stage' in item) && stage === 0));
-      const qubits = (values) => values.map((value) => `q${value}`).join(', ');
-      const pairs = (values) => values.map(([left, right]) => `(q${left}, q${right})`).join('  ');
-      const conciseQasm = (item) => {
-        if (item.op === '@init') return '@init  初始化 C0 / C1 / C2 的 SZ tile';
-        if (item.op === '@u3') return `@u3  ${item.circuit}: ${qubits(item.qubits)}  · ${item.zone}`;
-        if (item.op === '@move') return `@move  ${item.circuit}: → ${item.to}  ${pairs(item.pairs)}`;
-        if (item.op === '@rydberg') return `@rydberg  ${item.circuit}: ${pairs(item.pairs)}  · ${item.zone_id}`;
-        return item.op;
-      };
-      const conciseZair = (item) => {
-        if (item.op === 'init') return '↳ ZAIR init';
-        if (item.op === '1qGate') return `↳ ZAIR 1qGate: ${qubits(item.locs)}`;
-        if (item.op === 'rearrangeJob') return '↳ ZAIR rearrangeJob';
-        if (item.op === 'rydberg') return `↳ ZAIR rydberg: ${item.zone_id}`;
-        return `↳ ZAIR ${item.op}`;
-      };
-      irList.textContent = [...qasm.map(conciseQasm), ...zair.map(conciseZair)].join('\n') || '该 stage 没有新的 IR 指令。';
+      document.getElementById('replay-move').hidden = !showOperations || timelineItem.kind !== 'move_stage';
+      const tileColours = { C0: '#DDF2E7', C1: '#F7EFC8', C2: '#DCECF7' };
+      const initialMapping = { C0: '初始映射：4 个 qubit 位于 SZ0', C1: '初始映射：8 个 qubit 位于 SZ0', C2: '初始映射：16 个 qubit 位于 SZ1' };
+      const stageOperations = timing.stage_operations[stage] || {};
+      operationRows.replaceChildren(...['C0', 'C1', 'C2'].map((circuit) => {
+        const row = document.createElement('tr');
+        const name = document.createElement('th');
+        const operation = document.createElement('td');
+        name.scope = 'row'; name.textContent = circuit;
+        let description = !showOperations ? initialMapping[circuit] : stageOperations[circuit] || '空闲';
+        if (showOperations && timelineItem.kind === 'move_stage' && stage < timing.circuit_end_stage[circuit]) {
+          const count = timelineItem.circuit_moves?.[circuit] || 0;
+          description = count ? `${count} 个 qubit 正在移动` : '等待其他电路移动';
+        }
+        operation.textContent = description;
+        name.style.backgroundColor = tileColours[circuit];
+        operation.style.backgroundColor = tileColours[circuit];
+        row.append(name, operation);
+        return row;
+      }));
       const model = timing.performance_model;
       const entries = [
         ['模型', `${model.model}（非设备校准）`],
@@ -260,16 +268,34 @@
       update();
       playbackTimer = setTimeout(playNext, (timeline[Number(slider.value)].kind === 'move_stage' ? 2100 : 1800) * speedModes[speedIndex].factor);
     };
-    document.getElementById('play').addEventListener('click', (event) => { flashButton(event.currentTarget); if (!playbackTimer) playNext(); });
+    const enterExecution = () => {
+      if (!showOperations) {
+        showOperations = true;
+        const toggle = document.getElementById('operation-toggle');
+        toggle.textContent = 'Initial mapping';
+        toggle.setAttribute('aria-pressed', 'false');
+      }
+    };
+    document.getElementById('play').addEventListener('click', (event) => { flashButton(event.currentTarget); enterExecution(); update(); if (!playbackTimer) playNext(); });
     document.getElementById('pause').addEventListener('click', (event) => { flashButton(event.currentTarget); stopPlayback(); });
     document.getElementById('reset').addEventListener('click', (event) => { flashButton(event.currentTarget); stopPlayback(); slider.value = 0; update(); });
+    const stepBy = (delta, button) => {
+      flashButton(button);
+      stopPlayback();
+      enterExecution();
+      slider.value = Math.max(0, Math.min(lastStep, Number(slider.value) + delta));
+      update();
+    };
+    document.getElementById('previous').addEventListener('click', (event) => stepBy(-1, event.currentTarget));
+    document.getElementById('next').addEventListener('click', (event) => stepBy(1, event.currentTarget));
     document.getElementById('speed').addEventListener('click', (event) => { speedIndex = (speedIndex + 1) % speedModes.length; event.currentTarget.textContent = speedModes[speedIndex].label; flashButton(event.currentTarget); });
-    slider.addEventListener('input', update);
+    slider.addEventListener('input', () => { enterExecution(); update(); });
     slider.addEventListener('keydown', (event) => {
       const delta = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
       if (!delta) return;
       event.preventDefault();
       slider.value = Math.max(0, Math.min(lastStep, Number(slider.value) + delta));
+      enterExecution();
       update();
     });
     update();
