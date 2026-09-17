@@ -22,8 +22,8 @@
     .canvas-toolbar { display: flex; justify-content: flex-end; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid #e1ebe6; background: #fbfdfc; }
     .canvas-toolbar button { min-width: 30px; border: 1px solid #cbdad3; border-radius: 6px; background: white; color: #397aa0; font-size: 18px; line-height: 28px; cursor: pointer; }
     .canvas-toolbar output { width: 48px; text-align: center; font-size: 13px; }
-    .canvas-viewport { max-height: 72vh; overflow: auto; background: #f2f6f4; }
-    .canvas-stage { position: relative; transform-origin: top left; }
+    .canvas-viewport { height: 72vh; max-height: 72vh; overflow: auto; background: white; }
+    .canvas-stage { position: relative; margin: 0 auto; }
     img { display: block; max-width: none; height: auto; }
     figcaption { padding: 10px 16px; color: #52645b; font-size: 14px; }
     @media (max-width: 620px) {
@@ -52,7 +52,7 @@
       <div class="canvas-toolbar" aria-label="画布缩放">
         <button id="zoom-out" type="button" aria-label="缩小画布">−</button>
         <output id="zoom-label">100%</output>
-        <button id="zoom-reset" type="button" aria-label="重置画布缩放">100%</button>
+        <button id="zoom-reset" type="button" aria-label="适配完整画布">适配</button>
         <button id="zoom-in" type="button" aria-label="放大画布">+</button>
       </div>
       <div id="canvas-viewport" class="canvas-viewport">
@@ -68,6 +68,7 @@
     const label = document.getElementById('stage-label');
     const caption = document.getElementById('stage-description');
     const ticks = document.getElementById('ticks');
+    const canvasViewport = document.getElementById('canvas-viewport');
     const canvasStage = document.getElementById('canvas-stage');
     const zoomLabel = document.getElementById('zoom-label');
     const timing = window.STAGE_TIMING;
@@ -82,27 +83,60 @@
       image.decode?.().catch(() => {});
       return image;
     });
+    let requestedStage = 0;
+    // Do not blank the canvas while a requested SVG is still being fetched.
+    // This matters especially on Pages, where the 34 frames arrive separately.
+    const showFrameWhenReady = (stage) => {
+      requestedStage = stage;
+      const next = frames[stage];
+      const swap = () => {
+        if (requestedStage === stage) frame.src = next.src;
+      };
+      if (next.complete && next.naturalWidth) {
+        swap();
+      } else {
+        next.addEventListener('load', swap, { once: true });
+        next.addEventListener('error', () => {
+          if (requestedStage === stage) caption.textContent = `Stage ${stage} 的 SVG 帧未能加载；请刷新页面后重试。`;
+        }, { once: true });
+      }
+    };
     let zoom = 1;
     let baseWidth = 0;
     let baseHeight = 0;
+    let userZoomed = false;
     const applyZoom = () => {
       canvasStage.style.width = `${baseWidth * zoom}px`;
       canvasStage.style.height = `${baseHeight * zoom}px`;
-      frame.style.transform = `scale(${zoom})`;
+      // Set the SVG's real display size instead of transforming a full-size
+      // image.  This keeps overflow measurement and visible size identical.
+      frame.style.width = `${baseWidth * zoom}px`;
+      frame.style.height = `${baseHeight * zoom}px`;
+      frame.style.transform = 'none';
       zoomLabel.textContent = `${Math.round(zoom * 100)}%`;
     };
     const initializeCanvas = () => {
       if (!baseWidth) {
         baseWidth = frame.naturalWidth;
         baseHeight = frame.naturalHeight;
-        applyZoom();
+        fitCanvas();
       }
+    };
+    // Start with the complete SVG visible inside its own viewport.  The image
+    // remains vector-based, so manual zooming afterward stays sharp.
+    const fitCanvas = () => {
+      if (!baseWidth || !baseHeight) return;
+      const availableWidth = Math.max(1, canvasViewport.clientWidth - 2);
+      const availableHeight = Math.max(1, canvasViewport.clientHeight - 2);
+      zoom = Math.min(1, availableWidth / baseWidth, availableHeight / baseHeight);
+      applyZoom();
     };
     frame.addEventListener('load', initializeCanvas);
     if (frame.complete && frame.naturalWidth) initializeCanvas();
-    document.getElementById('zoom-in').addEventListener('click', () => { zoom = Math.min(2.5, zoom + 0.2); applyZoom(); });
-    document.getElementById('zoom-out').addEventListener('click', () => { zoom = Math.max(0.5, zoom - 0.2); applyZoom(); });
-    document.getElementById('zoom-reset').addEventListener('click', () => { zoom = 1; applyZoom(); });
+    document.getElementById('zoom-in').addEventListener('click', () => { userZoomed = true; zoom = Math.min(2.5, zoom + 0.2); applyZoom(); });
+    document.getElementById('zoom-out').addEventListener('click', () => { userZoomed = true; zoom = Math.max(0.1, zoom - 0.2); applyZoom(); });
+    document.getElementById('zoom-reset').addEventListener('click', () => { userZoomed = false; fitCanvas(); });
+    window.addEventListener('resize', () => { if (!userZoomed) fitCanvas(); });
     ticks.replaceChildren(...[0, ...Object.values(timing.circuit_end_stage), gateStages - 1, lastStage]
       .filter((value, index, values) => values.indexOf(value) === index)
       .sort((a, b) => a - b)
@@ -121,7 +155,7 @@
     const update = () => {
       const stage = Number(slider.value);
       const info = descriptions(stage);
-      frame.src = frames[stage].src;
+      showFrameWhenReady(stage);
       frame.alt = `${info.phase}：${info.text}。`;
       label.textContent = `${info.phase} · ${formatTime(info.startNs)}–${formatTime(info.endNs)}`;
       caption.textContent = `${info.text}。时长按 Lukin 参数累计：1Q 500 ns，CZ 262.4 ns，读出成像 500 μs。`;
