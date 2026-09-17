@@ -94,13 +94,15 @@
     const zoomLabel = document.getElementById('zoom-label');
     const timing = window.STAGE_TIMING;
     const gateStages = timing.gate_stage_count;
+    const timeline = timing.viewer_timeline;
     const lastStage = timing.durations_ns.length - 1;
-    slider.max = lastStage;
+    const lastStep = timeline.length - 1;
+    slider.max = lastStep;
     // Decode every small static frame once at startup.  Slider input then only
     // swaps an already-cached bitmap instead of triggering network/disk work.
-    const frames = Array.from({ length: lastStage + 1 }, (_, stage) => {
+    const frames = timeline.map((item) => {
       const image = new Image();
-      image.src = `_readout_frames/stage_${String(stage).padStart(2, '0')}.svg`;
+      image.src = `_readout_frames/${item.frame}`;
       image.decode?.().catch(() => {});
       return image;
     });
@@ -110,9 +112,9 @@
     let showOperations = true;
     // Do not blank the canvas while a requested SVG is still being fetched.
     // This matters especially on Pages, where the 34 frames arrive separately.
-    const showFrameWhenReady = (stage) => {
+    const showFrameWhenReady = (step) => {
       const request = ++requestedFrame;
-      const next = showOperations ? frames[stage] : initialFrame;
+      const next = showOperations ? frames[step] : initialFrame;
       const swap = () => {
         if (requestedFrame === request) frame.src = next.src;
       };
@@ -164,10 +166,11 @@
       event.currentTarget.setAttribute('aria-pressed', String(!showOperations));
       update();
     });
-    ticks.replaceChildren(...[0, ...Object.values(timing.circuit_end_stage), gateStages - 1, lastStage]
+    const stepForStage = (stage) => timeline.findIndex((item) => item.kind === 'stage' && item.stage === stage);
+    ticks.replaceChildren(...[0, ...Object.values(timing.circuit_end_stage).map(stepForStage), stepForStage(gateStages - 1), lastStep]
       .filter((value, index, values) => values.indexOf(value) === index)
       .sort((a, b) => a - b)
-      .map((value) => { const node = document.createElement('span'); node.textContent = value === lastStage ? 'Readout end' : `Stage ${value}`; return node; }));
+      .map((value) => { const node = document.createElement('span'); const item = timeline[value]; node.textContent = value === lastStep ? 'Readout end' : `Stage ${item.stage}`; return node; }));
     const formatTime = (ns) => ns >= 1e6 ? `${(ns / 1e6).toFixed(3)} ms` : ns >= 1e3 ? `${(ns / 1e3).toFixed(3)} μs` : `${ns.toFixed(1)} ns`;
     const descriptions = (stage) => {
       const activeReadout = [];
@@ -180,11 +183,15 @@
       return { startNs, endNs, phase, text: activeReadout.length ? activeReadout.join('；') : '执行 MultiQ 调度的门操作' };
     };
     const update = () => {
-      const stage = Number(slider.value);
+      const step = Number(slider.value);
+      const timelineItem = timeline[step];
+      const stage = timelineItem.stage;
       const info = descriptions(stage);
-      showFrameWhenReady(stage);
-      frame.alt = `${info.phase}：${info.text}。`;
-      label.textContent = `${info.phase} · ${formatTime(info.startNs)}–${formatTime(info.endNs)}`;
+      showFrameWhenReady(step);
+      frame.alt = `${timelineItem.kind === 'move_stage' ? `move_stage ${stage}` : info.phase}：${info.text}。`;
+      label.textContent = timelineItem.kind === 'move_stage'
+        ? `move_stage ${stage} · 跟随 Stage ${stage}`
+        : `${info.phase} · ${formatTime(info.startNs)}–${formatTime(info.endNs)}`;
       operationRows.replaceChildren(...Object.entries(timing.stage_operations[stage]).sort(([left], [right]) => left.localeCompare(right)).map(([circuit, operation]) => {
         const row = document.createElement('tr');
         const name = document.createElement('th');
