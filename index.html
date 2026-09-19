@@ -24,6 +24,12 @@
     #stage-label { justify-self: center; text-align: center; }
     .ticks { display: flex; width: 100%; justify-content: space-between; color: #66776f; font-size: 12px; }
     .viewer-panels { display: grid; grid-template-columns: minmax(230px, .9fr) minmax(0, 2.1fr); gap: 16px; align-items: stretch; }
+    .comparison-panel { margin-top: 16px; }
+    .comparison-table { width: 100%; border-collapse: collapse; font-size: 13px; color: #40554b; }
+    .comparison-table th, .comparison-table td { padding: 9px 12px; text-align: left; border-bottom: 1px solid #edf2ef; }
+    .comparison-table th { color: #397aa0; font-size: 12px; }
+    .comparison-table tr:last-child td { border-bottom: 0; }
+    .comparison-note { margin: 8px 0 0; color: #74847c; font-size: 11px; line-height: 1.4; }
     .left-stack { display: grid; gap: 16px; align-content: start; }
     .panel { min-width: 0; background: white; border: 1px solid #d7e2dd; border-radius: 12px; overflow: hidden; }
     .operations-panel { align-self: stretch; }
@@ -96,6 +102,7 @@
       </div>
       <section class="panel canvas-panel" aria-label="原子阵列可视化">
         <div class="canvas-toolbar" aria-label="画布缩放">
+          <select id="architecture-select" aria-label="选择硬件架构"><option value="five">五分区</option><option value="three">三分区基线</option><option value="multiq-original">Original MultiQ</option></select>
           <button id="operation-toggle" class="operation-toggle" type="button" aria-pressed="true">返回执行态</button>
           <button id="replay-move" class="operation-toggle" type="button" hidden>重放移动</button>
           <button id="zoom-out" type="button" aria-label="缩小画布">−</button>
@@ -108,8 +115,18 @@
         </div>
       </section>
       </div>
+    <section class="panel comparison-panel" aria-label="架构比较">
+      <h2 class="panel-title">Architecture comparison</h2>
+      <table class="comparison-table"><thead><tr><th>指标</th><th>五分区</th><th>三分区基线</th><th>Original MultiQ*</th></tr></thead><tbody id="comparison-rows"></tbody></table>
+      <p class="comparison-note">*Original MultiQ 为论文参数约束下的 UI 重建；论文未公开 trap 级三区坐标。</p>
+    </section>
   </main>
-  <script src="stage_timing.js"></script>
+  <script>
+    const architectureParam = new URLSearchParams(location.search).get('architecture');
+    const selectedArchitecture = ['three', 'multiq-original'].includes(architectureParam) ? architectureParam : 'five';
+    const timingScripts = { five: 'stage_timing.js', three: 'three_zone_timing.js', 'multiq-original': 'original_multiq_timing.js' };
+    document.write(`<script src="${timingScripts[selectedArchitecture]}"><\/script>`);
+  </script>
   <script>
     const slider = document.getElementById('stage');
     const frame = document.getElementById('frame');
@@ -121,6 +138,10 @@
     const canvasStage = document.getElementById('canvas-stage');
     const zoomLabel = document.getElementById('zoom-label');
     const timing = window.STAGE_TIMING;
+    const assetRevision = timing.asset_revision || 'current';
+    const frameDirectories = { five: '_readout_frames', three: '_three_zone_frames', 'multiq-original': '_multiq_original_frames' };
+    const frameDirectory = frameDirectories[selectedArchitecture];
+    document.getElementById('architecture-select').value = selectedArchitecture;
     let playbackTimer = null;
     const speedModes = [
       { label: '.8×', factor: 1.18 }, { label: '1×', factor: 1 }, { label: '1.2×', factor: .84 },
@@ -136,12 +157,12 @@
     // swaps an already-cached bitmap instead of triggering network/disk work.
     const frames = timeline.map((item) => {
       const image = new Image();
-      image.src = `_readout_frames/${item.frame}`;
+      image.src = `${frameDirectory}/${item.frame}?v=${assetRevision}`;
       image.decode?.().catch(() => {});
       return image;
     });
     const initialFrame = new Image();
-    initialFrame.src = '_readout_frames/initial_mapping.svg';
+    initialFrame.src = `${frameDirectory}/initial_mapping.svg?v=${assetRevision}`;
     let requestedFrame = 0;
     let activeStep = 0;
     // The static placement is the entry view; progress interaction switches
@@ -207,7 +228,23 @@
       event.currentTarget.setAttribute('aria-pressed', String(!showOperations));
       update();
     });
+    document.getElementById('architecture-select').addEventListener('change', (event) => {
+      const query = event.target.value === 'five' ? '' : `?architecture=${event.target.value}`;
+      location.href = `${location.pathname}${query}`;
+    });
     const stepForStage = (stage) => timeline.findIndex((item) => item.kind === 'stage' && item.stage === stage);
+    const comparison = [
+      ['总资源', 'SZ 56 · EZ 28 pairs · RZ 56', 'SZ 56 · EZ 28 pairs · RZ 56', 'SZ 106 · EZ 60 pairs · RZ 53'],
+      ['AOD move sub-rounds', '93', '80', '79'],
+      ['Conflict-graph edges', '735', '710', '647'],
+      ['Total transport path', '17,666.0 μm', '19,797.1 μm', '19,734.3 μm'],
+      ['联合 Fidelity', '13.893%', '13.832%', '13.834%'],
+    ];
+    document.getElementById('comparison-rows').replaceChildren(...comparison.map(([metric, five, three, original]) => {
+      const row = document.createElement('tr');
+      for (const value of [metric, five, three, original]) { const cell = document.createElement('td'); cell.textContent = value; row.append(cell); }
+      return row;
+    }));
     ticks.replaceChildren(...[0, ...Object.values(timing.circuit_end_stage).map(stepForStage), stepForStage(gateStages - 1), lastStep]
       .filter((value, index, values) => values.indexOf(value) === index)
       .sort((a, b) => a - b)
@@ -237,7 +274,9 @@
         : `${info.phase} · ${formatTime(info.startNs)}–${formatTime(info.endNs)}`;
       document.getElementById('replay-move').hidden = !showOperations || timelineItem.kind !== 'move_stage';
       const tileColours = { C0: '#DDF2E7', C1: '#F7EFC8', C2: '#DCECF7' };
-      const initialMapping = { C0: '初始映射：4 个 qubit 位于 SZ0', C1: '初始映射：8 个 qubit 位于 SZ0', C2: '初始映射：16 个 qubit 位于 SZ1' };
+      const initialMapping = selectedArchitecture !== 'five'
+        ? { C0: '初始映射：4 个 qubit 位于 SZ（4×1 tile）', C1: '初始映射：8 个 qubit 位于 SZ（8×1 tile）', C2: '初始映射：16 个 qubit 位于 SZ（8×2 tile）' }
+        : { C0: '初始映射：4 个 qubit 位于 SZ0', C1: '初始映射：8 个 qubit 位于 SZ0', C2: '初始映射：16 个 qubit 位于 SZ1' };
       const stageOperations = timing.stage_operations[stage] || {};
       operationRows.replaceChildren(...['C0', 'C1', 'C2'].map((circuit) => {
         const row = document.createElement('tr');
@@ -258,10 +297,11 @@
       const model = timing.performance_model;
       const formula = document.createElement('span');
       formula.className = 'fidelity-formula';
-      formula.innerHTML = '<i>F</i><sub>batch</sub> = (<i>F</i><sub>1Q</sub>)<sup>N<sub>1Q</sub></sup> × (<i>F</i><sub>CZ</sub>)<sup>N<sub>CZ</sub></sup> × (<i>F</i><sub>transfer</sub>)<sup>N<sub>transfer</sub></sup>';
+      formula.innerHTML = '<i>F</i><sub>batch</sub> = (<i>F</i><sub>1Q</sub>)<sup>N<sub>1Q</sub></sup> × (<i>F</i><sub>CZ</sub>)<sup>N<sub>CZ</sub></sup> × (<i>F</i><sub>transfer</sub>)<sup>N<sub>transfer</sub></sup> × Π<sub>q</sub>e<sup>−<i>t</i><sub>transport,q</sub>/<i>T</i><sub>2</sub></sup>';
       const parameters = document.createElement('span');
       parameters.className = 'fidelity-parameters';
-      parameters.innerHTML = `<i>F</i><sub>1Q</sub> = 0.9991, <i>N</i><sub>1Q</sub> = ${model.event_counts.u3}<br><i>F</i><sub>CZ</sub> = 0.995, <i>N</i><sub>CZ</sub> = ${model.event_counts.rydberg_cz}<br><i>F</i><sub>transfer</sub> = 0.999, <i>N</i><sub>transfer</sub> = ${model.event_counts.move}`;
+      const transport = model.transport;
+      parameters.innerHTML = `<i>F</i><sub>1Q</sub> = 0.9991, <i>N</i><sub>1Q</sub> = ${model.event_counts.u3}<br><i>F</i><sub>CZ</sub> = 0.995, <i>N</i><sub>CZ</sub> = ${model.event_counts.rydberg_cz}<br><i>F</i><sub>transfer</sub> = 0.999, <i>N</i><sub>transfer</sub> = ${model.event_counts.move}<br>Σ<i>d</i><sub>q</sub> = ${transport.total_path_length_um.toFixed(1)} μm, <i>t</i><sub>transport</sub> = ${transport.total_transport_time_us.toFixed(1)} μs, <i>T</i><sub>2</sub> = ${(transport.coherence_time_us / 1e6).toFixed(1)} s`;
       const entries = [
         ['公式', formula],
         ['参数', parameters],
