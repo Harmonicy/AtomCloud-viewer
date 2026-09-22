@@ -52,6 +52,7 @@ input[type=range]{flex:1;min-width:140px;accent-color:var(--accent)}
 .num{font-variant-numeric:tabular-nums}
 .stat{font-size:13px;color:var(--dim)} .stat b{color:var(--text)}
 .canvas{position:relative;border:1px solid var(--border);border-radius:8px;overflow:auto;max-height:70vh;background:var(--panel)}
+.canvas svg{display:block;max-width:100%;height:auto}
 #cv{display:block}
 #cv text{font-family:system-ui,-apple-system,"PingFang SC",sans-serif;pointer-events:none}
 .zoom{margin-left:auto;display:inline-flex;gap:4px;align-items:center}
@@ -107,6 +108,7 @@ tr.cur td{background:color-mix(in srgb,var(--accent) 14%,transparent)}
         <label class="k">架构</label>
         <div class="seg" id="arch"></div>
         <button class="b" id="initial" type="button" aria-pressed="false">Initial mapping</button>
+        <button class="b" id="fullViewer" type="button" title="打开 full pipeline 动画">Full pipeline 动画</button>
         <span class="zoom">
           <button class="b" id="zout" type="button" aria-label="缩小">−</button><output id="zlab">100%</output>
           <button class="b" id="zin" type="button" aria-label="放大">+</button>
@@ -383,8 +385,9 @@ for (let st = 0; st < S.stage_count; st++) {
 [['five', '五分区'], ['multiq-original', 'Original MultiQ']].forEach(([k, name]) => {
   const b = document.createElement('button'); b.type = 'button'; b.textContent = name; if (k === ARCH) b.className = 'on';
   b.onclick = () => { if (k !== ARCH) location.href = `${location.pathname}${k === 'five' ? '' : '?architecture=' + k}`; };
-  $('arch').append(b);
+$('arch').append(b);
 });
+$('fullViewer').onclick = () => window.open('full_stage_viewer.html', '_blank', 'noopener');
 
 // circuit legend (click to focus)
 $('legend').replaceChildren(...circuits.map((c) => {
